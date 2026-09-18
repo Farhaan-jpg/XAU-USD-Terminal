@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>XAUUSD Terminal — Gold Spot / US Dollar</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">XAU</span>
+      <span class="brand-sub">USD&nbsp;TERMINAL</span>
+      <span class="brand-tag">GOLD&nbsp;SPOT&nbsp;/&nbsp;US&nbsp;DOLLAR</span>
+    </div>
+
+    <div class="hero-quotes">
+      <div class="quote-main">
+        <div class="q-label">SPOT&nbsp;XAU/USD <span class="q-provider" id="spotProvider">…</span></div>
+        <div class="q-row">
+          <span class="q-price num" id="spotPrice">– – –</span>
+          <span class="q-chg num" id="spotChg"></span>
+        </div>
+        <div class="q-meta"><span id="spotRange"></span></div>
+      </div>
+
+      <div class="quote-sub">
+        <div class="q-label">GC=F FUT</div>
+        <div class="q-price q-sm num" id="futPrice">– – –</div>
+        <div class="q-chg q-chg-sm num" id="futChg"></div>
+      </div>
+
+      <div class="quote-sub">
+        <div class="q-label">SPREAD&nbsp;Ft–Sp</div>
+        <div class="q-price q-sm num" id="spreadVal">–</div>
+      </div>
+
+      <div class="quote-sub sess">
+        <div class="q-label">SESSIONS</div>
+        <div class="sess-row">
+          <span class="ses-chip" id="sesAsia" title="Asia session 00-08 UTC">Asia</span>
+          <span class="ses-chip" id="sesLondon" title="London 08-13 UTC">Lon</span>
+          <span class="ses-chip" id="sesNy" title="New York 13-21 UTC">NY</span>
+          <span class="ses-chip" id="sesWknd" title="Weekend">Wk</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="top-tools">
+      <div class="conn">
+        <span class="led" id="connLed"></span>
+        <span id="connTxt">connecting…</span>
+      </div>
+      <div class="clock">
+        <div class="clock-loc num" id="clockUTC">--:--:-- UTC</div>
+        <div class="clock-meta" id="clockLocal">--:--:--</div>
+      </div>
+      <button class="icon-btn" id="btnRefresh" title="Refresh now">⟳</button>
+    </div>
+  </header>
+
+  <div class="ticker" id="tickerOuter">
+    <div class="ticker-track" id="tickerTrack"></div>
+  </div>
+
+  <main class="grid">
+
+    <section class="panel p-chart">
+      <div class="panel-head">
+        <span class="pn gld">GOLD SPOT / US DOLLAR</span>
+        <span class="pn-sub">OANDA:XAUUSD · LIVE</span>
+        <div class="intv" id="intvGroup">
+          <button data-tf="1">1m</button>
+          <button data-tf="5" class="active">5m</button>
+          <button data-tf="15">15m</button>
+          <button data-tf="30">30m</button>
+          <button data-tf="60">1H</button>
+          <button data-tf="240">4H</button>
+          <button data-tf="D">1D</button>
+          <button data-tf="W">1W</button>
+        </div>
+        <span class="pn-sub" id="chartStatus">loading chart…</span>
+      </div>
+      <div class="chart-box" id="tvchart"></div>
+    </section>
+
+    <section class="panel p-bias">
+      <div class="panel-head">
+        <span class="pn gld">REAL-TIME MARKET BIAS</span>
+        <span class="pn-sub" id="biasAsoOf">…</span>
+      </div>
+      <div class="bias-body">
+        <div class="bias-gauge" id="biasGauge"></div>
+        <div class="bias-legend">
+          <div class="g-badge" id="biasLabel">…</div>
+          <div class="g-score num" id="biasScore">–</div>
+          <div class="g-scorelabel">BIAS SCORE&nbsp;(0–100)</div>
+          <div class="g-conf">confidence <span id="biasConf">–</span></div>
+        </div>
+        <div class="bias-drivers">
+          <div class="drv-label">PRIMARY DRIVERS</div>
+          <ol id="biasDrivers"></ol>
+        </div>
+        <div class="bias-spark">
+          <div class="spark-label">INTRADAY XAU · 5m</div>
+          <svg id="biasSpark" viewBox="0 0 300 56" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+      <div class="matrix">
+        <div class="matrix-row matrix-head">
+          <span>SIGNAL</span><span>VALUE</span><span>W</span><span>DIR</span>
+        </div>
+        <div id="signalMatrix"></div>
+      </div>
+    </section>
+
+    <section class="panel p-levels">
+      <div class="panel-head"><span class="pn">KEY LEVELS</span><span class="pn-sub" id="levelsSub"></span></div>
+      <div class="levels">
+        <div class="levels-body" id="levelsBody"></div>
+      </div>
+    </section>
+
+    <section class="panel p-indicators">
+      <div class="panel-head"><span class="pn">TECHNICAL INDICATORS</span><span class="pn-sub">basis: GC=F</span></div>
+      <div class="ind-grid" id="indBody"></div>
+    </section>
+
+    <section class="panel p-corr">
+      <div class="panel-head"><span class="pn">CORRELATED MARKETS</span><span class="pn-sub" id="corrSub"></span></div>
+      <div class="corr-grid" id="corrBody"></div>
+    </section>
+
+    <section class="panel p-inst">
+      <div class="panel-head"><span class="pn">INSTITUTIONAL POSITIONING</span><span class="pn-sub">CFTC COT</span></div>
+      <div class="inst" id="cotBlock"></div>
+      <div class="inst-etf-head">GOLD ETF GAUGE</div>
+      <div class="inst-etf" id="instEtf"></div>
+    </section>
+
+    <section class="panel p-news">
+      <div class="panel-head">
+        <span class="pn gld">BREAKING NEWS / ANALYSIS</span>
+        <span class="pn-sub" id="newsAsoOf"></span>
+        <div class="chip-filter" id="newsFilter">
+          <button data-f="all" class="active">ALL</button>
+          <button data-f="geo">GEO</button>
+          <button data-f="gold">GOLD</button>
+          <button data-f="bull">BULLISH</button>
+          <button data-f="bear">BEARISH</button>
+        </div>
+      </div>
+      <div class="news-list" id="newsList"></div>
+    </section>
+
+    <section class="panel p-cal">
+      <div class="panel-head">
+        <span class="pn gld">ECONOMIC CALENDAR — USD / GOLD</span>
+        <span class="pn-sub" id="calAsoOf"></span>
+        <div class="chip-filter" id="calFilter">
+          <button data-imp="all" class="active">ALL</button>
+          <button data-imp="High">HIGH</button>
+          <button data-imp="Medium">MEDIUM</button>
+          <button data-imp="gold">GOLD-REL</button>
+        </div>
+        <label class="tgl"><input type="checkbox" id="calHideOld" checked /> hide passed</label>
+      </div>
+      <div class="cal-list" id="calList"></div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="foot-left" id="footSources"></div>
+    <div class="foot-right">
+      Personal research tool · aggregated free public data (gold-api.com, Yahoo Finance, TradingView, CFTC) +
+      geopolitics/news feeds (BBC, Al Jazeera, Guardian, France 24, NPR, Sky News, Times of Israel) ·
+      data may be delayed by seconds · not investment advice
+    </div>
+  </footer>
+
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

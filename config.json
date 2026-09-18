@@ -1,0 +1,44 @@
+{
+  "port": 3800,
+  "poll": {
+    "quotesSec": 10,
+    "biasSec": 25,
+    "newsSec": 90,
+    "calendarMin": 10,
+    "cotMin": 60
+  },
+  "goldApiUrl": "https://api.gold-api.com/price/XAU",
+  "goldFeeds": [
+    "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GC%3DF&region=US&lang=en-US",
+    "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GLD&region=US&lang=en-US",
+    "https://feeds.finance.yahoo.com/rss/2.0/headline?s=DX-Y.NYB&region=US&lang=en-US",
+    "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml",
+    "https://www.aljazeera.com/xml/rss/all.xml",
+    "https://www.theguardian.com/world/rss",
+    "https://www.theguardian.com/world/middleeast/rss",
+    "https://www.france24.com/en/rss",
+    "https://feeds.skynews.com/feeds/rss/world.xml",
+    "https://feeds.npr.org/1001/rss.xml",
+    "https://www.timesofisrael.com/feed/"
+  ],
+  "baseSymbol": "GC=F",
+  "baseName": "COMEX Gold Futures (GC=F)",
+  "correlations": [
+    { "symbol": "DX-Y.NYB", "name": "Dollar Index DXY" },
+    { "symbol": "^TNX", "name": "US 10Y Yield" },
+    { "symbol": "^IRX", "name": "US 3M Yield" },
+    { "symbol": "^VIX", "name": "VIX" },
+    { "symbol": "SI=F", "name": "Silver Futures" },
+    { "symbol": "EURUSD=X", "name": "EUR/USD" },
+    { "symbol": "GBPUSD=X", "name": "GBP/USD" },
+    { "symbol": "USDJPY=X", "name": "USD/JPY" },
+    { "symbol": "USDCNY=X", "name": "USD/CNY" },
+    { "symbol": "BTC-USD", "name": "Bitcoin" }
+  ],
+  "etfs": [
+    { "symbol": "GLD", "name": "SPDR Gold (GLD)" },
+    { "symbol": "IAU", "name": "iShares Gold (IAU)" },
+    { "symbol": "SLV", "name": "iShares Silver (SLV)" }
+  ]
+}
