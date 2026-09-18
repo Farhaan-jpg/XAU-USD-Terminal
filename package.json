@@ -6,14 +6,19 @@
   "description": "Real-time XAUUSD (Gold Spot vs US Dollar) analysis terminal",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "worker:dev": "wrangler dev",
+    "deploy": "wrangler deploy"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "express": "^4.21.2",
-    "he": "^1.2.0",
-    "rss-parser": "^3.13.0"
+    "fast-xml-parser": "^5.11.1",
+    "he": "^1.2.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.135.0"
   }
 }
