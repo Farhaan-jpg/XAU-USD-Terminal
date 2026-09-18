@@ -20,7 +20,18 @@ function json(data, status = 200) {
 }
 
 function fail(e, tag) {
+  console.error("[worker] " + tag + " ->", e && e.message ? e.message : e);
   return json({ error: tag + ": " + (e && e.message ? e.message : e), at: Date.now() }, 502);
+}
+
+async function probe(name, fn, timeoutMs = 9000) {
+  const t0 = Date.now();
+  try {
+    const out = await fn();
+    return { name, ok: true, ms: Date.now() - t0, note: out };
+  } catch (e) {
+    return { name, ok: false, ms: Date.now() - t0, note: e && e.message ? e.message : String(e) };
+  }
 }
 
 async function handleApi(request, url) {
@@ -39,32 +50,55 @@ async function handleApi(request, url) {
   }
 
   if (url.pathname === "/api/quotes") {
-    try {
-      const [spotR, futuresQ, corrQ, etfQ] = await Promise.all([
-        spot(),
-        quote(config.baseSymbol, config.baseName, 10000),
-        quotes(config.correlations, 10000),
-        quotes(config.etfs, 10000),
-      ]);
-      const now = new Date();
-      const utcH = now.getUTCHours();
-      return json({
-        asof: Date.now(),
-        spot: spotR,
-        futures: futuresQ,
-        correlated: corrQ,
-        etfs: etfQ,
-        sessions: {
-          asia: utcH >= 0 && utcH < 8,
-          london: utcH >= 8 && utcH < 13,
-          newYork: utcH >= 13 && utcH < 21,
-          goldMarket: true,
-          weekend: [0, 6].includes(now.getUTCDay()),
-        },
-      });
-    } catch (e) {
-      return fail(e, "quotes");
-    }
+    const [spotLeg, futLeg, corrLeg, etfLeg] = await Promise.allSettled([
+      spot(),
+      quote(config.baseSymbol, config.baseName, 10000),
+      quotes(config.correlations, 10000),
+      quotes(config.etfs, 10000),
+    ]);
+    const now = new Date();
+    const utcH = now.getUTCHours();
+    const spotR = spotLeg.status === "fulfilled" ? spotLeg.value : null;
+    const futuresQ = futLeg.status === "fulfilled" ? futLeg.value : null;
+    const corrQ = corrLeg.status === "fulfilled" ? corrLeg.value : [];
+    const etfQ = etfLeg.status === "fulfilled" ? etfLeg.value : [];
+    return json({
+      asof: Date.now(),
+      spot: spotR,
+      futures: futuresQ,
+      correlated: corrQ,
+      etfs: etfQ,
+      sourceFreshness: {
+        "gold-api spot": spotLeg.status === "fulfilled",
+        "yahoo futures": futLeg.status === "fulfilled",
+        "yahoo correlated": corrLeg.status === "fulfilled",
+        "yahoo etf": etfLeg.status === "fulfilled",
+      },
+      sessions: {
+        asia: utcH >= 0 && utcH < 8,
+        london: utcH >= 8 && utcH < 13,
+        newYork: utcH >= 13 && utcH < 21,
+        goldMarket: true,
+        weekend: [0, 6].includes(now.getUTCDay()),
+      },
+    });
+  }
+
+  if (url.pathname === "/api/diag") {
+    const [spotR, yahooR, candlesR, calR, cotR, bbcR] = await Promise.all([
+      probe("spot-gold-api", () => spot()),
+      probe("yahoo-quote", () => quote("GC=F", "GC=F", 9000)),
+      probe("yahoo-candles", () => candlesList("GC=F", "5m", "1d", 12000).then((c) => c.length + " candles")),
+      probe("tradingview-calendar", () => calendar(true).then((e) => e.length + " events")),
+      probe("cftc-cot", () => cot(true).then((d) => (d && d.cot ? "ok" : "no data"))),
+      probe("rss-bbc", () => {
+        const c = config;
+        return fetch(c.goldFeeds[3], {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+        }).then((r) => "HTTP " + r.status);
+      }),
+    ]);
+    return json({ asof: Date.now(), checks: [spotR, yahooR, candlesR, calR, cotR, bbcR] });
   }
 
   if (url.pathname === "/api/bias") {
