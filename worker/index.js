@@ -5,6 +5,8 @@ import { news } from "../lib/news.js";
 import { calendar } from "../lib/calendar.js";
 import { cot } from "../lib/cot.js";
 import { bias } from "../lib/bias.js";
+import { runAlertChecks } from "../lib/alerts.js";
+import { testTelegramConnection } from "../lib/telegram.js";
 
 const startedAt = Date.now();
 const pid = Math.floor(Math.random() * 1e6);
@@ -152,15 +154,56 @@ async function handleApi(request, url) {
     }
   }
 
+  if (url.pathname === "/api/telegram/test" && request.method === "POST") {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const botToken = body.botToken || env.TELEGRAM_BOT_TOKEN || config.telegram?.botToken;
+      const chatId = body.chatId || env.TELEGRAM_CHAT_ID || config.telegram?.chatId;
+      const res = await testTelegramConnection(botToken, chatId);
+      return json(res, res.ok ? 200 : 400);
+    } catch (e) {
+      return fail(e, "telegram-test");
+    }
+  }
+
+  if (url.pathname === "/api/telegram/config") {
+    if (request.method === "POST") {
+      try {
+        const body = await request.json().catch(() => ({}));
+        if (body.botToken != null) config.telegram.botToken = body.botToken;
+        if (body.chatId != null) config.telegram.chatId = body.chatId;
+        if (body.enabled != null) config.telegram.enabled = Boolean(body.enabled);
+        if (body.alertOnNews != null) config.telegram.alertOnNews = Boolean(body.alertOnNews);
+        if (body.alertOnCalendar != null) config.telegram.alertOnCalendar = Boolean(body.alertOnCalendar);
+        if (body.alertOnBiasShift != null) config.telegram.alertOnBiasShift = Boolean(body.alertOnBiasShift);
+        return json({ ok: true, config: { ...config.telegram, botToken: config.telegram.botToken ? "******" : "" } });
+      } catch (e) {
+        return fail(e, "telegram-config-set");
+      }
+    }
+    const hasToken = Boolean(env.TELEGRAM_BOT_TOKEN || config.telegram?.botToken);
+    const hasChatId = Boolean(env.TELEGRAM_CHAT_ID || config.telegram?.chatId);
+    return json({
+      configured: hasToken && hasChatId,
+      enabled: config.telegram?.enabled ?? true,
+      alertOnNews: config.telegram?.alertOnNews ?? true,
+      alertOnCalendar: config.telegram?.alertOnCalendar ?? true,
+      alertOnBiasShift: config.telegram?.alertOnBiasShift ?? true,
+    });
+  }
+
   return json({ error: "not found" }, 404);
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
-      return await handleApi(request, url);
+      return await handleApi(request, url, env);
     }
     return env.ASSETS.fetch(request);
+  },
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runAlertChecks(env));
   },
 };

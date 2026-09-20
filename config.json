@@ -8,6 +8,14 @@
     "cotMin": 60
   },
   "goldApiUrl": "https://api.gold-api.com/price/XAU",
+  "telegram": {
+    "enabled": false,
+    "botToken": "",
+    "chatId": "",
+    "alertOnNews": true,
+    "alertOnCalendar": true,
+    "alertOnBiasShift": true
+  },
   "goldFeeds": [
     "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GC%3DF&region=US&lang=en-US",
     "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GLD&region=US&lang=en-US",

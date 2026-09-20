@@ -17,7 +17,15 @@ const state = {
   prevSpot: null,
   filters: { news: "all", calendar: "all", calHideOld: true },
   chartTf: "5",
-  chartNa: false,
+  chartMode: "overlay", // "overlay" | "tradingview"
+  tvSymbol: "OANDA:XAUUSD",
+  overlayLayers: { pivots: true, vwap: true, emas: true, hilo: true },
+  overlayChart: null,
+  candleSeries: null,
+  overlaySeries: { vwap: null, ema20: null, ema50: null, ema200: null },
+  pivotPriceLines: [],
+  hiloPriceLines: [],
+  telegram: { configured: false, enabled: true },
 };
 
 /* ---------------- helpers ---------------- */
@@ -316,13 +324,15 @@ function drawSpark(data, vw) {
 /* ---------------- levels / indicators ---------------- */
 
 function renderLevels(d) {
+  const isFut = state.tvSymbol && state.tvSymbol.includes("GC");
+  const baseLv = isFut ? (d.levels?.futures || d.levels || {}) : (d.levels?.spot || d.levels || {});
   const lv = d.levels || {};
   const rows = (items) => items.map((it) => {
     const cls = it.t === "s" ? "lv-s" : it.t === "r" ? "lv-r" : it.t === "g" ? "lv-gold" : "lv-n";
     return `<div class="lv-row"><span class="lv-name">${esc(it.name)}</span><span class="lv-price ${cls} num">${it.price != null ? fmtPrice(it.price, 2) : "—"}</span><span class="lv-note">${esc(it.note || "")}</span></div>`;
   }).join("");
 
-  const pivots = lv.pivots || {};
+  const pivots = baseLv.pivots || lv.pivots || {};
   let pitems = [];
   if (pivots.pivot != null) {
     pitems = [
@@ -335,23 +345,29 @@ function renderLevels(d) {
       { name: "S3", price: pivots.s3, t: "s", note: "support 3" },
     ];
   }
-  const spot = lv.spotPrice != null ? fmtPrice(lv.spotPrice, 2) : "—";
-  $("#levelsSub").textContent = "spot " + spot;
+  const curP = isFut ? (d.futuresPrice || baseLv.price) : (d.spotPrice || baseLv.price);
+  $("#levelsSub").textContent = (isFut ? "futures " : "spot ") + (curP != null ? fmtPrice(curP, 2) : "—");
 
   let session = [];
-  if (lv.dayHigh != null || lv.dayLow != null) {
+  const dayH = baseLv.dayHigh != null ? baseLv.dayHigh : lv.dayHigh;
+  const dayL = baseLv.dayLow != null ? baseLv.dayLow : lv.dayLow;
+  const vwapVal = baseLv.vwap != null ? baseLv.vwap : lv.vwap;
+  const swR = baseLv.swingR != null ? baseLv.swingR : lv.swingR;
+  const swS = baseLv.swingS != null ? baseLv.swingS : lv.swingS;
+  if (dayH != null || dayL != null) {
     session = [
-      { name: "SESSION HIGH", price: lv.dayHigh, t: "n", note: lv.vwap != null ? `VWAP ${fmtPrice(lv.vwap, 2)}` : "" },
-      { name: "SESSION LOW", price: lv.dayLow, t: "n", note: "" },
-      { name: "SWING RESIST", price: lv.swingR, t: "r", note: "30d swing" },
-      { name: "SWING SUPPORT", price: lv.swingS, t: "s", note: "30d swing" },
+      { name: "SESSION HIGH", price: dayH, t: "n", note: vwapVal != null ? `VWAP ${fmtPrice(vwapVal, 2)}` : "" },
+      { name: "SESSION LOW", price: dayL, t: "n", note: "" },
+      { name: "SWING RESIST", price: swR, t: "r", note: "30d swing" },
+      { name: "SWING SUPPORT", price: swS, t: "s", note: "30d swing" },
     ];
   }
+  const spread = d.spread || 0;
   const wkly = [
-    { name: "WEEK HIGH", price: lv.weekHigh, t: "n", note: "5d" },
-    { name: "WEEK LOW", price: lv.weekLow, t: "n", note: "5d" },
-    { name: "MONTH HIGH", price: lv.monthHigh, t: "n", note: "22d" },
-    { name: "MONTH LOW", price: lv.monthLow, t: "n", note: "22d" },
+    { name: "WEEK HIGH", price: isFut ? lv.weekHigh : (lv.weekHigh != null && spread ? lv.weekHigh - spread : lv.weekHigh), t: "n", note: "5d" },
+    { name: "WEEK LOW", price: isFut ? lv.weekLow : (lv.weekLow != null && spread ? lv.weekLow - spread : lv.weekLow), t: "n", note: "5d" },
+    { name: "MONTH HIGH", price: isFut ? lv.monthHigh : (lv.monthHigh != null && spread ? lv.monthHigh - spread : lv.monthHigh), t: "n", note: "22d" },
+    { name: "MONTH LOW", price: isFut ? lv.monthLow : (lv.monthLow != null && spread ? lv.monthLow - spread : lv.monthLow), t: "n", note: "22d" },
     { name: "ATR(14D)", price: lv.atrD, t: "g", note: "avg true range" },
   ];
   const html =
@@ -576,22 +592,292 @@ function renderCalendar() {
   b.innerHTML = rows.join("");
 }
 
-/* ---------------- TradingView chart ---------------- */
+/* ---------------- Dual-Engine Chart & Overlay ---------------- */
 
-function initChart(tf) {
+function mapTf(tf) {
+  if (tf === "1") return { interval: "1m", range: "1d" };
+  if (tf === "5") return { interval: "5m", range: "1d" };
+  if (tf === "15") return { interval: "15m", range: "5d" };
+  if (tf === "30") return { interval: "30m", range: "5d" };
+  if (tf === "60") return { interval: "60m", range: "1mo" };
+  if (tf === "240") return { interval: "60m", range: "3mo" };
+  if (tf === "D") return { interval: "1d", range: "1y" };
+  return { interval: "5m", range: "1d" };
+}
+
+function calcEMA(data, period) {
+  const k = 2 / (period + 1);
+  const result = [];
+  let ema = null;
+  for (let i = 0; i < data.length; i++) {
+    const val = data[i].close;
+    if (val == null) continue;
+    if (ema === null) {
+      if (i >= period - 1) {
+        let sum = 0;
+        for (let j = i - period + 1; j <= i; j++) sum += data[j].close;
+        ema = sum / period;
+        result.push({ time: data[i].time, value: ema });
+      }
+    } else {
+      ema = val * k + ema * (1 - k);
+      result.push({ time: data[i].time, value: ema });
+    }
+  }
+  return result;
+}
+
+function calcVWAP(data) {
+  const result = [];
+  let cumPV = 0;
+  let cumVol = 0;
+  let lastDay = null;
+  for (let i = 0; i < data.length; i++) {
+    const d = new Date(data[i].time * 1000);
+    const day = d.getUTCDate();
+    if (lastDay !== null && day !== lastDay) {
+      cumPV = 0;
+      cumVol = 0;
+    }
+    lastDay = day;
+    const vol = data[i].volume || 1;
+    const tp = (data[i].high + data[i].low + data[i].close) / 3;
+    cumPV += tp * vol;
+    cumVol += vol;
+    result.push({ time: data[i].time, value: cumPV / cumVol });
+  }
+  return result;
+}
+
+function initOverlayChart() {
+  const container = $("#overlayChartBox");
+  if (!container) return;
+  if (typeof LightweightCharts === "undefined") {
+    setTimeout(initOverlayChart, 200);
+    return;
+  }
+
+  if (state.overlayChart) {
+    try { state.overlayChart.remove(); } catch {}
+    state.overlayChart = null;
+  }
+
+  const chart = LightweightCharts.createChart(container, {
+    width: container.clientWidth || 800,
+    height: container.clientHeight || 420,
+    layout: {
+      background: { type: "solid", color: "#0d1420" },
+      textColor: "#71839a",
+      fontFamily: 'Consolas, monospace',
+    },
+    grid: {
+      vertLines: { color: "rgba(28, 40, 54, 0.4)" },
+      horzLines: { color: "rgba(28, 40, 54, 0.4)" },
+    },
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode.Normal,
+      vertLine: { color: "#4c5c70", width: 1, style: 3 },
+      horzLine: { color: "#4c5c70", width: 1, style: 3 },
+    },
+    rightPriceScale: {
+      borderColor: "#1c2836",
+      scaleMargins: { top: 0.1, bottom: 0.1 },
+    },
+    timeScale: {
+      borderColor: "#1c2836",
+      timeVisible: true,
+      secondsVisible: false,
+    },
+  });
+
+  state.overlayChart = chart;
+
+  const candleSeries = chart.addCandlestickSeries({
+    upColor: "#2dd08b",
+    downColor: "#ff5f6e",
+    borderVisible: false,
+    wickUpColor: "#2dd08b",
+    wickDownColor: "#ff5f6e",
+  });
+  state.candleSeries = candleSeries;
+
+  // EMA series
+  state.overlaySeries.ema20 = chart.addLineSeries({ color: "#ffb020", lineWidth: 1, title: "EMA 20" });
+  state.overlaySeries.ema50 = chart.addLineSeries({ color: "#4da3ff", lineWidth: 1.5, title: "EMA 50" });
+  state.overlaySeries.ema200 = chart.addLineSeries({ color: "#a78bfa", lineWidth: 2, title: "EMA 200" });
+
+  // VWAP series
+  state.overlaySeries.vwap = chart.addLineSeries({ color: "#f0b90b", lineWidth: 1.5, lineStyle: 2, title: "VWAP" });
+
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+          chart.applyOptions({
+            width: entry.contentRect.width,
+            height: entry.contentRect.height,
+          });
+        }
+      }
+    });
+    ro.observe(container);
+  }
+
+  loadChartCandles();
+}
+
+async function loadChartCandles() {
+  const tfCfg = mapTf(state.chartTf);
+  try {
+    $("#chartStatus").textContent = "loading candles…";
+    const data = await getJSON(`/api/candles?sym=GC%3DF&interval=${tfCfg.interval}&range=${tfCfg.range}&limit=300`);
+    const rawCandles = data.candles || [];
+    if (!rawCandles.length) {
+      $("#chartStatus").textContent = "no candles";
+      return;
+    }
+
+    const spread = (state.bias?.spread != null) ? state.bias.spread : 0;
+    const isFut = state.tvSymbol && state.tvSymbol.includes("GC");
+    const adj = isFut ? 0 : spread;
+
+    const formatted = [];
+    const seenTimes = new Set();
+    for (const c of rawCandles) {
+      const t = Math.floor(c.t / 1000);
+      if (seenTimes.has(t)) continue;
+      seenTimes.add(t);
+      formatted.push({
+        time: t,
+        open: c.o - adj,
+        high: c.h - adj,
+        low: c.l - adj,
+        close: c.c - adj,
+        volume: c.v || 0,
+      });
+    }
+
+    state.candles = formatted;
+    if (state.candleSeries) {
+      state.candleSeries.setData(formatted);
+    }
+
+    updateChartOverlays(formatted);
+    $("#chartStatus").textContent = `Live · ${formatted.length} bars`;
+  } catch (e) {
+    console.warn("loadChartCandles", e);
+    $("#chartStatus").textContent = "candle feed delayed";
+  }
+}
+
+function updateChartOverlays(candles) {
+  if (!candles || !candles.length || !state.overlayChart || !state.candleSeries) return;
+
+  // 1. EMAs
+  if (state.overlayLayers.emas) {
+    const ema20 = calcEMA(candles, 20);
+    const ema50 = calcEMA(candles, 50);
+    const ema200 = calcEMA(candles, 200);
+    state.overlaySeries.ema20.setData(ema20);
+    state.overlaySeries.ema50.setData(ema50);
+    state.overlaySeries.ema200.setData(ema200);
+    state.overlaySeries.ema20.applyOptions({ visible: true });
+    state.overlaySeries.ema50.applyOptions({ visible: true });
+    state.overlaySeries.ema200.applyOptions({ visible: true });
+  } else {
+    state.overlaySeries.ema20.applyOptions({ visible: false });
+    state.overlaySeries.ema50.applyOptions({ visible: false });
+    state.overlaySeries.ema200.applyOptions({ visible: false });
+  }
+
+  // 2. VWAP
+  if (state.overlayLayers.vwap) {
+    const vwapData = calcVWAP(candles);
+    state.overlaySeries.vwap.setData(vwapData);
+    state.overlaySeries.vwap.applyOptions({ visible: true });
+  } else {
+    state.overlaySeries.vwap.applyOptions({ visible: false });
+  }
+
+  // 3. Pivots & Hi/Lo Price Lines
+  (state.pivotPriceLines || []).forEach((pl) => {
+    try { state.candleSeries.removePriceLine(pl); } catch {}
+  });
+  state.pivotPriceLines = [];
+
+  (state.hiloPriceLines || []).forEach((pl) => {
+    try { state.candleSeries.removePriceLine(pl); } catch {}
+  });
+  state.hiloPriceLines = [];
+
+  const isFut = state.tvSymbol && state.tvSymbol.includes("GC");
+  const baseLv = isFut ? (state.bias?.levels?.futures || state.bias?.levels || {}) : (state.bias?.levels?.spot || state.bias?.levels || {});
+  const pivots = baseLv.pivots || {};
+
+  if (state.overlayLayers.pivots && pivots.pivot != null) {
+    const pLines = [
+      { title: "R3", price: pivots.r3, color: "#ff5f6e", style: 2 },
+      { title: "R2", price: pivots.r2, color: "#ff5f6e", style: 2 },
+      { title: "R1", price: pivots.r1, color: "#ff8591", style: 2 },
+      { title: "PIVOT", price: pivots.pivot, color: "#f0b90b", style: 0 },
+      { title: "S1", price: pivots.s1, color: "#50e3a1", style: 2 },
+      { title: "S2", price: pivots.s2, color: "#2dd08b", style: 2 },
+      { title: "S3", price: pivots.s3, color: "#2dd08b", style: 2 },
+    ];
+    for (const pl of pLines) {
+      if (pl.price != null && Number.isFinite(pl.price)) {
+        const line = state.candleSeries.createPriceLine({
+          price: pl.price,
+          color: pl.color,
+          lineWidth: pl.title === "PIVOT" ? 2 : 1,
+          lineStyle: pl.style,
+          axisLabelVisible: true,
+          title: pl.title,
+        });
+        state.pivotPriceLines.push(line);
+      }
+    }
+  }
+
+  if (state.overlayLayers.hilo && (baseLv.dayHigh != null || baseLv.dayLow != null)) {
+    if (baseLv.dayHigh != null && Number.isFinite(baseLv.dayHigh)) {
+      const hl = state.candleSeries.createPriceLine({
+        price: baseLv.dayHigh,
+        color: "#2dd08b",
+        lineWidth: 1,
+        lineStyle: 1,
+        axisLabelVisible: true,
+        title: "DAY HIGH",
+      });
+      state.hiloPriceLines.push(hl);
+    }
+    if (baseLv.dayLow != null && Number.isFinite(baseLv.dayLow)) {
+      const ll = state.candleSeries.createPriceLine({
+        price: baseLv.dayLow,
+        color: "#ff5f6e",
+        lineWidth: 1,
+        lineStyle: 1,
+        axisLabelVisible: true,
+        title: "DAY LOW",
+      });
+      state.hiloPriceLines.push(ll);
+    }
+  }
+}
+
+function initTradingViewWidget(sym, tf) {
   const container = $("#tvchart");
   if (!container) return;
   if (typeof TradingView === "undefined") {
-    $("#chartStatus").textContent = "waiting for chart lib…";
-    setTimeout(() => initChart(tf), 600);
+    $("#chartStatus").textContent = "waiting for TV lib…";
+    setTimeout(() => initTradingViewWidget(sym, tf), 600);
     return;
   }
-  state.chartNa = true;
-  $("#chartStatus").textContent = "OANDA feed";
   container.innerHTML = "";
+  const symbol = sym || state.tvSymbol || "OANDA:XAUUSD";
   new TradingView.widget({
-    symbol: "OANDA:XAUUSD",
-    interval: tf,
+    symbol: symbol,
+    interval: tf || state.chartTf || "5",
     autosize: true,
     timezone: "Etc/UTC",
     theme: "dark",
@@ -602,19 +888,14 @@ function initChart(tf) {
     gridColor: "rgba(28,40,54,0.35)",
     enable_publishing: false,
     hide_side_toolbar: false,
-    allow_symbol_change: false,
+    allow_symbol_change: true,
     hidetop_toolbar: false,
     studies: ["RSI@tv-basicstudies", "MACD@tv-basicstudies", "MASimple@tv-basicstudies"],
-    studies_overrides: {
-      "moving average.ma.style": "1",
-      "moving average.displacements": "0",
-      "macd.histogram.color": "#f0b90b",
-      "rsi.plot.color": "#4da3ff",
-    },
     container_id: "tvchart",
     withdateranges: true,
     save_image: false,
   });
+  $("#chartStatus").textContent = symbol;
 }
 
 /* ---------------- data loaders ---------------- */
@@ -641,8 +922,9 @@ async function loadBias() {
     renderLevels(d);
     renderIndicators(d);
     renderCot(d);
-    const cd = await getJSON("/api/candles?sym=GC%3DF&interval=5m&range=1d&limit=288");
-    state.candles = cd.candles || [];
+    if (state.chartMode === "overlay") {
+      loadChartCandles();
+    }
     drawSpark(state.candles, d.levels ? d.levels.vwap : null);
   } catch (e) {
     state.failCount.bias++;
@@ -692,6 +974,115 @@ function refreshAll(manual) {
   }
 }
 
+/* ---------------- Telegram Alerts UI ---------------- */
+
+async function loadTelegramConfig() {
+  try {
+    const cfg = await getJSON("/api/telegram/config");
+    state.telegram = cfg;
+    updateTelegramButton();
+  } catch (e) {
+    console.warn("telegram config fetch", e);
+  }
+}
+
+function updateTelegramButton() {
+  const dot = $("#tgLed");
+  const txt = $("#tgStatusText");
+  if (!dot || !txt) return;
+  if (state.telegram.configured) {
+    dot.className = "tg-dot on";
+    txt.textContent = "ALERTS ON";
+  } else {
+    dot.className = "tg-dot";
+    txt.textContent = "ALERTS";
+  }
+}
+
+function bindTelegramEvents() {
+  $("#btnTelegram").addEventListener("click", () => {
+    $("#tgModal").style.display = "flex";
+    $("#tgFeedback").style.display = "none";
+  });
+
+  $("#btnCloseTgModal").addEventListener("click", () => {
+    $("#tgModal").style.display = "none";
+  });
+
+  $("#tgModal").addEventListener("click", (e) => {
+    if (e.target === $("#tgModal")) $("#tgModal").style.display = "none";
+  });
+
+  $("#btnTestTg").addEventListener("click", async () => {
+    const botToken = $("#tgBotToken").value.trim();
+    const chatId = $("#tgChatId").value.trim();
+    const fb = $("#tgFeedback");
+    fb.className = "form-feedback";
+    fb.style.display = "block";
+    fb.textContent = "Sending test alert to Telegram…";
+
+    try {
+      const res = await fetch("/api/telegram/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botToken, chatId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        fb.className = "form-feedback success";
+        fb.textContent = "✅ Test alert sent successfully! Check your Telegram.";
+      } else {
+        fb.className = "form-feedback error";
+        fb.textContent = "❌ " + (data.error || "Failed to send alert. Check your Bot Token and Chat ID.");
+      }
+    } catch (e) {
+      fb.className = "form-feedback error";
+      fb.textContent = "❌ Error: " + e.message;
+    }
+  });
+
+  $("#btnSaveTg").addEventListener("click", async () => {
+    const botToken = $("#tgBotToken").value.trim();
+    const chatId = $("#tgChatId").value.trim();
+    const alertOnNews = $("#tgAlertNews").checked;
+    const alertOnCalendar = $("#tgAlertCalendar").checked;
+    const alertOnBiasShift = $("#tgAlertBias").checked;
+    const fb = $("#tgFeedback");
+    fb.className = "form-feedback";
+    fb.style.display = "block";
+    fb.textContent = "Saving settings…";
+
+    try {
+      const res = await fetch("/api/telegram/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          botToken: botToken || undefined,
+          chatId: chatId || undefined,
+          enabled: true,
+          alertOnNews,
+          alertOnCalendar,
+          alertOnBiasShift,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        fb.className = "form-feedback success";
+        fb.textContent = "✅ Telegram settings saved! Cloud monitor is active 24/7.";
+        state.telegram.configured = Boolean(botToken || state.telegram.configured);
+        updateTelegramButton();
+        setTimeout(() => { $("#tgModal").style.display = "none"; }, 1500);
+      } else {
+        fb.className = "form-feedback error";
+        fb.textContent = "❌ " + (data.error || "Failed to save settings.");
+      }
+    } catch (e) {
+      fb.className = "form-feedback error";
+      fb.textContent = "❌ Error: " + e.message;
+    }
+  });
+}
+
 /* ---------------- status led ---------------- */
 
 function updateStatus() {
@@ -733,7 +1124,55 @@ function bindEvents() {
     $$("#intvGroup button").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     state.chartTf = btn.dataset.tf;
-    if (state.chartNa) initChart(state.chartTf);
+    if (state.chartMode === "overlay") {
+      loadChartCandles();
+    } else {
+      initTradingViewWidget(state.tvSymbol, state.chartTf);
+    }
+  });
+
+  $("#chartModeGroup").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-mode]");
+    if (!btn) return;
+    $$("#chartModeGroup button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    const mode = btn.dataset.mode;
+    state.chartMode = mode;
+    if (mode === "overlay") {
+      $("#overlayChartBox").style.display = "block";
+      $("#tvchart").style.display = "none";
+      $("#overlayToggles").style.display = "flex";
+      $("#tvSymbols").style.display = "none";
+      $("#chartMainTitle").textContent = "XAU/USD SPOT";
+      $("#chartSubTitle").textContent = "REAL-TIME OVERLAY ENGINE";
+      if (!state.overlayChart) initOverlayChart();
+      else loadChartCandles();
+    } else {
+      $("#overlayChartBox").style.display = "none";
+      $("#tvchart").style.display = "block";
+      $("#overlayToggles").style.display = "none";
+      $("#tvSymbols").style.display = "block";
+      $("#chartMainTitle").textContent = state.tvSymbol;
+      $("#chartSubTitle").textContent = "TRADINGVIEW WIDGET";
+      initTradingViewWidget(state.tvSymbol, state.chartTf);
+    }
+  });
+
+  $("#overlayToggles").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-layer]");
+    if (!btn) return;
+    btn.classList.toggle("active");
+    const layer = btn.dataset.layer;
+    state.overlayLayers[layer] = btn.classList.contains("active");
+    updateChartOverlays(state.candles);
+  });
+
+  $("#tvSymbolSelect").addEventListener("change", (e) => {
+    state.tvSymbol = e.target.value;
+    $("#chartMainTitle").textContent = state.tvSymbol;
+    if (state.chartMode === "tradingview") {
+      initTradingViewWidget(state.tvSymbol, state.chartTf);
+    }
   });
 
   $("#newsFilter").addEventListener("click", (e) => {
@@ -760,6 +1199,8 @@ function bindEvents() {
   });
 
   $("#btnRefresh").addEventListener("click", () => refreshAll(true));
+
+  bindTelegramEvents();
 }
 
 /* ---------------- boot ---------------- */
@@ -779,7 +1220,8 @@ function bindEvents() {
     sessions: { asia: false, london: false, newYork: false },
   });
   bindEvents();
-  initChart(state.chartTf);
+  initOverlayChart();
+  loadTelegramConfig();
 
   getJSON("/api/config")
     .then((cfg) => {

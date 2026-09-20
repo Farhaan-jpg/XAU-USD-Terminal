@@ -48,6 +48,11 @@
     </div>
 
     <div class="top-tools">
+      <button class="tg-btn" id="btnTelegram" title="Configure 24/7 Telegram Cloud Alerts">
+        <span class="tg-icon">✈</span>
+        <span class="tg-text" id="tgStatusText">ALERTS</span>
+        <span class="tg-dot" id="tgLed"></span>
+      </button>
       <div class="conn">
         <span class="led" id="connLed"></span>
         <span id="connTxt">connecting…</span>
@@ -68,21 +73,43 @@
 
     <section class="panel p-chart">
       <div class="panel-head">
-        <span class="pn gld">GOLD SPOT / US DOLLAR</span>
-        <span class="pn-sub">OANDA:XAUUSD · LIVE</span>
-        <div class="intv" id="intvGroup">
-          <button data-tf="1">1m</button>
-          <button data-tf="5" class="active">5m</button>
-          <button data-tf="15">15m</button>
-          <button data-tf="30">30m</button>
-          <button data-tf="60">1H</button>
-          <button data-tf="240">4H</button>
-          <button data-tf="D">1D</button>
-          <button data-tf="W">1W</button>
+        <div class="chart-titles">
+          <span class="pn gld" id="chartMainTitle">XAU/USD SPOT</span>
+          <span class="pn-sub" id="chartSubTitle">REAL-TIME OVERLAY ENGINE</span>
         </div>
-        <span class="pn-sub" id="chartStatus">loading chart…</span>
+        <div class="chart-controls">
+          <div class="chart-mode-group" id="chartModeGroup">
+            <button class="mode-btn active" data-mode="overlay" title="Terminal Real-Time Candlestick Chart with Indicator Overlays">OVERLAY</button>
+            <button class="mode-btn" data-mode="tradingview" title="TradingView Advanced Chart Widget">TRADINGVIEW</button>
+          </div>
+          <div class="overlay-toggles" id="overlayToggles">
+            <button class="ov-btn active" data-layer="pivots" title="Classic Pivot Points (PP, R1-R3, S1-S3)">PIVOTS</button>
+            <button class="ov-btn active" data-layer="vwap" title="Session VWAP">VWAP</button>
+            <button class="ov-btn active" data-layer="emas" title="EMAs (20, 50, 200)">EMAS</button>
+            <button class="ov-btn active" data-layer="hilo" title="Session High / Low">HI/LO</button>
+          </div>
+          <div class="tv-symbols" id="tvSymbols" style="display:none;">
+            <select id="tvSymbolSelect" class="chart-select">
+              <option value="OANDA:XAUUSD" selected>OANDA: XAUUSD (Spot)</option>
+              <option value="COMEX:GC1!">COMEX: GC1! (Futures)</option>
+              <option value="FOREXCOM:XAUUSD">FOREX.COM: XAUUSD</option>
+              <option value="TVC:GOLD">TVC: GOLD</option>
+            </select>
+          </div>
+          <div class="intv" id="intvGroup">
+            <button data-tf="1">1m</button>
+            <button data-tf="5" class="active">5m</button>
+            <button data-tf="15">15m</button>
+            <button data-tf="30">30m</button>
+            <button data-tf="60">1H</button>
+            <button data-tf="240">4H</button>
+            <button data-tf="D">1D</button>
+          </div>
+        </div>
+        <span class="pn-sub" id="chartStatus">Live Feed</span>
       </div>
-      <div class="chart-box" id="tvchart"></div>
+      <div class="chart-box" id="overlayChartBox"></div>
+      <div class="chart-box" id="tvchart" style="display:none;"></div>
     </section>
 
     <section class="panel p-bias">
@@ -180,6 +207,42 @@
     </div>
   </footer>
 
+  <!-- Telegram Alerts Modal -->
+  <div class="modal-backdrop" id="tgModal" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">✈ Telegram Cloud Alerts (24/7 Background)</div>
+        <button class="modal-close" id="btnCloseTgModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Receive real-time breaking news, geopolitical updates, high-impact economic releases (CPI, NFP, FOMC), and market bias shifts delivered straight to your Telegram <b>even when you leave or close this website</b>.
+        </p>
+        <div class="form-group">
+          <label for="tgBotToken">Telegram Bot Token</label>
+          <input type="password" id="tgBotToken" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" autocomplete="off" />
+          <span class="form-hint">Create a bot in 1 minute with <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a></span>
+        </div>
+        <div class="form-group">
+          <label for="tgChatId">Telegram Chat ID</label>
+          <input type="text" id="tgChatId" placeholder="e.g. 123456789 or @your_channel" />
+          <span class="form-hint">Get your chat ID from <a href="https://t.me/userinfobot" target="_blank" rel="noopener">@userinfobot</a> or your group/channel ID</span>
+        </div>
+        <div class="form-checks">
+          <label class="check-item"><input type="checkbox" id="tgAlertNews" checked /> <span>Breaking News & Geopolitical Alerts</span></label>
+          <label class="check-item"><input type="checkbox" id="tgAlertCalendar" checked /> <span>High-Impact Economic Events (15m advance warning + actuals)</span></label>
+          <label class="check-item"><input type="checkbox" id="tgAlertBias" checked /> <span>Market Bias Shifts (Bullish / Bearish shifts)</span></label>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-test" id="btnTestTg">Send Test Alert</button>
+          <button class="btn-save" id="btnSaveTg">Save Settings</button>
+        </div>
+        <div id="tgFeedback" class="form-feedback"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
   <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
   <script src="app.js"></script>
 </body>

@@ -9,6 +9,8 @@ import { news } from "./lib/news.js";
 import { calendar } from "./lib/calendar.js";
 import { cot } from "./lib/cot.js";
 import { bias } from "./lib/bias.js";
+import { runAlertChecks } from "./lib/alerts.js";
+import { testTelegramConnection } from "./lib/telegram.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -72,7 +74,7 @@ app.get("/api/quotes", (req, res) => {
   guarded(
     "quotes",
     async () => {
-      const [spotR, futuresQ, corrQ, etfQ] = await Promise.all([
+      const [spotLeg, futLeg, corrLeg, etfLeg] = await Promise.allSettled([
         spot(),
         quote(config.baseSymbol, config.baseName, 10000),
         quotes(config.correlations, 10000),
@@ -80,12 +82,22 @@ app.get("/api/quotes", (req, res) => {
       ]);
       const now = new Date();
       const utcH = now.getUTCHours();
+      const spotR = spotLeg.status === "fulfilled" ? spotLeg.value : null;
+      const futuresQ = futLeg.status === "fulfilled" ? futLeg.value : null;
+      const corrQ = corrLeg.status === "fulfilled" ? corrLeg.value : [];
+      const etfQ = etfLeg.status === "fulfilled" ? etfLeg.value : [];
       return {
         asof: Date.now(),
         spot: spotR,
         futures: futuresQ,
         correlated: corrQ,
         etfs: etfQ,
+        sourceFreshness: {
+          "gold-api spot": spotLeg.status === "fulfilled",
+          "yahoo futures": futLeg.status === "fulfilled",
+          "yahoo correlated": corrLeg.status === "fulfilled",
+          "yahoo etf": etfLeg.status === "fulfilled",
+        },
         sessions: {
           asia: utcH >= 0 && utcH < 8,
           london: utcH >= 8 && utcH < 13,
@@ -143,6 +155,65 @@ app.get("/api/candles", async (req, res) => {
     fail(res, e, "candles");
   }
 });
+
+app.post("/api/telegram/test", async (req, res) => {
+  try {
+    const { botToken, chatId } = req.body || {};
+    const t = botToken || process.env.TELEGRAM_BOT_TOKEN || config.telegram?.botToken;
+    const c = chatId || process.env.TELEGRAM_CHAT_ID || config.telegram?.chatId;
+    const result = await testTelegramConnection(t, c);
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (e) {
+    fail(res, e, "telegram-test");
+  }
+});
+
+app.get("/api/telegram/config", (req, res) => {
+  const hasToken = Boolean(process.env.TELEGRAM_BOT_TOKEN || config.telegram?.botToken);
+  const hasChatId = Boolean(process.env.TELEGRAM_CHAT_ID || config.telegram?.chatId);
+  ok(res, {
+    configured: hasToken && hasChatId,
+    enabled: config.telegram?.enabled ?? true,
+    alertOnNews: config.telegram?.alertOnNews ?? true,
+    alertOnCalendar: config.telegram?.alertOnCalendar ?? true,
+    alertOnBiasShift: config.telegram?.alertOnBiasShift ?? true,
+  });
+});
+
+app.post("/api/telegram/config", (req, res) => {
+  try {
+    const body = req.body || {};
+    if (body.botToken != null) config.telegram.botToken = body.botToken;
+    if (body.chatId != null) config.telegram.chatId = body.chatId;
+    if (body.enabled != null) config.telegram.enabled = Boolean(body.enabled);
+    if (body.alertOnNews != null) config.telegram.alertOnNews = Boolean(body.alertOnNews);
+    if (body.alertOnCalendar != null) config.telegram.alertOnCalendar = Boolean(body.alertOnCalendar);
+    if (body.alertOnBiasShift != null) config.telegram.alertOnBiasShift = Boolean(body.alertOnBiasShift);
+    ok(res, { ok: true, config: { ...config.telegram, botToken: config.telegram.botToken ? "******" : "" } });
+  } catch (e) {
+    fail(res, e, "telegram-config-set");
+  }
+});
+
+app.get("/api/diag", async (req, res) => {
+  try {
+    const [spotR, yahooR, candlesR, calR, cotR] = await Promise.all([
+      spot().then(() => "ok").catch((e) => "fail: " + e.message),
+      quote("GC=F", "GC=F", 9000).then(() => "ok").catch((e) => "fail: " + e.message),
+      candlesList("GC=F", "5m", "1d", 12000).then((c) => c.length + " candles").catch((e) => "fail: " + e.message),
+      calendar(true).then((e) => e.length + " events").catch((e) => "fail: " + e.message),
+      cot(true).then((d) => (d && d.cot ? "ok" : "no data")).catch((e) => "fail: " + e.message),
+    ]);
+    ok(res, { asof: Date.now(), checks: { spot: spotR, yahoo: yahooR, candles: candlesR, calendar: calR, cot: cotR } });
+  } catch (e) {
+    fail(res, e, "diag");
+  }
+});
+
+// Run background alert checks every 60 seconds 24/7
+setInterval(() => {
+  runAlertChecks().catch((e) => console.error("[server] alert loop error:", e.message));
+}, 60000);
 
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));

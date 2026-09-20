@@ -485,6 +485,194 @@ footer .foot-left span { color: var(--muted); }
 .flash-up { animation: flashUp .8s ease; }
 .flash-down { animation: flashDown .8s ease; }
 
+/* ============ Telegram Alert Button ============ */
+.tg-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(77, 163, 255, 0.1);
+  border: 1px solid rgba(77, 163, 255, 0.35);
+  color: var(--blue);
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.tg-btn:hover {
+  background: rgba(77, 163, 255, 0.2);
+  border-color: var(--blue);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(77, 163, 255, 0.3);
+}
+.tg-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted2);
+}
+.tg-dot.on {
+  background: var(--up);
+  box-shadow: 0 0 8px rgba(45, 208, 139, 0.8);
+  animation: pulseDot 2s infinite;
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
+
+/* ============ Chart Controls & Overlay ============ */
+.chart-titles { display: flex; flex-direction: column; gap: 2px; }
+.chart-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.chart-mode-group {
+  display: flex;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 2px;
+  gap: 2px;
+}
+.mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.mode-btn:hover { color: var(--text); }
+.mode-btn.active {
+  background: var(--gold);
+  color: #0b0f15;
+  box-shadow: 0 0 8px rgba(240, 185, 11, 0.3);
+}
+.overlay-toggles { display: flex; gap: 4px; }
+.ov-btn {
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  color: var(--muted2);
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.ov-btn:hover { border-color: var(--muted); color: var(--text); }
+.ov-btn.active {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: rgba(77, 163, 255, 0.12);
+}
+.chart-select {
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* ============ Telegram Modal ============ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 7, 12, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.modal-card {
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 520px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(240, 185, 11, 0.1);
+  overflow: hidden;
+  animation: modalIn .2s ease-out;
+}
+@keyframes modalIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #131c2b, #101722);
+}
+.modal-title { font-size: 13px; font-weight: 700; color: var(--gold); letter-spacing: 0.8px; }
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+}
+.modal-close:hover { color: var(--text); }
+.modal-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.modal-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.modal-desc b { color: var(--text); }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group label { font-size: 11px; font-weight: 600; color: var(--text); letter-spacing: 0.5px; }
+.form-group input {
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  outline: none;
+  transition: border-color .15s;
+}
+.form-group input:focus { border-color: var(--gold); }
+.form-hint { font-size: 10px; color: var(--muted2); }
+.form-hint a { color: var(--blue); text-decoration: none; }
+.form-hint a:hover { text-decoration: underline; }
+.form-checks { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
+.check-item { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text); cursor: pointer; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.btn-test {
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-test:hover { border-color: var(--blue); background: rgba(77,163,255,0.15); }
+.btn-save {
+  background: var(--gold);
+  border: 1px solid var(--gold);
+  color: #0b0f15;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-save:hover { background: #ffd76a; }
+.form-feedback { font-size: 11.5px; padding: 6px 8px; border-radius: 4px; display: none; }
+.form-feedback.success { display: block; color: var(--up); background: var(--up-bg); border: 1px solid rgba(45,208,139,0.3); }
+.form-feedback.error { display: block; color: var(--down); background: var(--down-bg); border: 1px solid rgba(255,95,110,0.3); }
+
 /* ============ responsive ============ */
 @media (max-width: 1500px) {
   .p-chart { grid-column: span 7; }
@@ -499,4 +687,5 @@ footer .foot-left span { color: var(--muted); }
   .grid { padding: 6px; gap: 6px; }
   .topbar { flex-wrap: wrap; }
   .p-levels, .p-indicators, .p-corr, .p-inst { grid-column: span 12; }
+  .chart-controls { width: 100%; justify-content: flex-start; }
 }
